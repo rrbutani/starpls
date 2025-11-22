@@ -2038,6 +2038,8 @@ pub(crate) fn resolve_builtin_type_ref_opt(db: &dyn Db, type_ref: Option<TypeRef
 // TODO(withered-magic): This function currently assumes that all types are covariant in their arguments.
 pub(crate) fn assign_tys(db: &dyn Db, source: &Ty, target: &Ty) -> bool {
     use Protocol::*;
+    use RuleKind::*;
+    use TyKind::BuiltinType as Builtin;
 
     // Assignments involving "Any", "Unknown", or "Unbound" at the top-level
     // are always valid to avoid confusion.
@@ -2097,6 +2099,19 @@ pub(crate) fn assign_tys(db: &dyn Db, source: &Ty, target: &Ty) -> bool {
         | (TyKind::Struct(_), TyKind::Struct(_))
         | (TyKind::Bool(_), TyKind::Bool(_))
         | (TyKind::Int(_), TyKind::Int(_)) => true,
+
+        (TyKind::Macro(makro), Builtin(t, None)) if t.name(db).as_str() == "macro" => true,
+        (TyKind::Rule(Rule { kind: Build, .. }), Builtin(t, None))
+            if t.name(db).as_str() == "rule" =>
+        {
+            true
+        }
+        (TyKind::Rule(Rule { kind, .. }), Builtin(t, None))
+            if *kind == Repository && t.name(db).as_str() == "repository_rule" =>
+        {
+            true
+        }
+
         (source, target) => source == target,
     }
 }
