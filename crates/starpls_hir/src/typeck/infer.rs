@@ -1019,7 +1019,6 @@ impl TyContext<'_> {
 
                         // Check for any disallowed attributes.
                         for arg in args.iter() {
-                            eprintln!("{:?}", arg);
                             match arg {
                                 Argument::Keyword { name, expr }
                                     if makro.disallowed_attrs().any(|n| n == name) =>

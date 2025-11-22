@@ -578,29 +578,65 @@ impl Ty {
                         TyKind::Dict(Ty::string(), Ty::any(), None).intern(),
                     ))),
             ),
-            TyKind::Macro(makro) => Params::Macro(
-                makro
-                    .attrs
-                    .as_ref()
-                    .map(|attrs| {
-                        attrs.attrs.iter().filter_map(|(name, attr)| {
-                            attr.as_ref().map(|attr| {
-                                (
-                                    Param(
-                                        RuleParam::Keyword {
-                                            name: name.clone(),
-                                            attr: attr.clone(),
-                                        }
-                                        .into(),
-                                    ),
-                                    attr.expected_ty(),
-                                )
-                            })
+            TyKind::Macro(Macro {
+                attrs,
+                has_common_attrs,
+                ..
+            }) => {
+                let mut common_attrs =
+                    Some(())
+                        .into_iter()
+                        .flat_map(|()| {
+                            if *has_common_attrs {
+                                let common = common_attributes_query(db);
+                                let attrs = common.build(db).iter().enumerate().map(
+                                    |(index, (_, attr))| {
+                                        (
+                                            Param(
+                                                RuleParam::BuiltinKeyword(RuleKind::Build, index)
+                                                    .into(),
+                                            ),
+                                            attr.expected_ty(),
+                                        )
+                                    },
+                                );
+                                Some(attrs)
+                            } else {
+                                None
+                            }
                         })
-                    })
-                    .into_iter()
-                    .flatten(),
-            ),
+                        .flatten();
+
+                // This chaining is done to put the `name` attribute first.
+                Params::Macro(
+                    common_attrs
+                        .next()
+                        .into_iter()
+                        .chain(
+                            attrs
+                                .as_ref()
+                                .map(|attrs| {
+                                    attrs.attrs.iter().filter_map(|(name, attr)| {
+                                        attr.as_ref().map(|attr| {
+                                            (
+                                                Param(
+                                                    RuleParam::Keyword {
+                                                        name: name.clone(),
+                                                        attr: attr.clone(),
+                                                    }
+                                                    .into(),
+                                                ),
+                                                attr.expected_ty(),
+                                            )
+                                        })
+                                    })
+                                })
+                                .into_iter()
+                                .flatten(),
+                        )
+                        .chain(common_attrs),
+                )
+            }
             _ => return None,
         })
     }
@@ -1586,6 +1622,7 @@ pub(crate) struct Macro {
     /// Attributes defined in the `attrs` argument to the `macro()` function.
     pub(crate) attrs: Option<Arc<RuleAttributes>>,
     pub(crate) doc: Option<InternedString>,
+    pub(crate) has_common_attrs: bool,
 }
 
 impl Macro {

@@ -493,7 +493,9 @@ impl BuiltinFunction {
             }
 
             (None, "macro") => {
-                let mut attrs = None;
+                let mut attrs_lit = None;
+                let mut parent_attrs = None;
+                let mut has_common_attrs = false;
                 let mut doc = None;
                 for (arg, ty) in args {
                     if let Argument::Keyword { name, .. } = arg {
@@ -505,15 +507,46 @@ impl BuiltinFunction {
                             }
                             "attrs" => {
                                 if let TyKind::Dict(_, _, Some(lit)) = ty.kind() {
-                                    attrs = Some(Arc::new(attrs_from_dict_literal(db, lit, true)))
+                                    attrs_lit = Some(lit);
                                 }
                             }
+                            // See: https://bazel.build/extending/macros#attribute-inheritance
+                            "inherit_attrs" => match ty.kind() {
+                                TyKind::Rule(TyRule { attrs, .. }) => {
+                                    parent_attrs = attrs.as_ref();
+                                    has_common_attrs = true;
+                                }
+                                TyKind::Macro(Macro {
+                                    attrs,
+                                    has_common_attrs: common,
+                                    ..
+                                }) => {
+                                    parent_attrs = attrs.as_ref();
+                                    has_common_attrs = *common;
+                                }
+                                TyKind::String(Some(str)) if str.value(db).as_ref() == "common" => {
+                                    has_common_attrs = true;
+                                }
+                                _ => {}
+                            },
                             _ => {}
                         }
                     }
                 }
 
-                TyKind::Macro(Macro { attrs, doc })
+                let attrs = match (attrs_lit, parent_attrs) {
+                    (Some(lit), None) => Some(Arc::new(attrs_from_dict_literal(db, lit, true))),
+                    (None, Some(parent)) => Some(parent.clone()),
+                    (Some(lit), Some(parent)) => Some(Arc::new(
+                        attrs_from_dict_literal_and_parent(db, lit, parent, true),
+                    )),
+                    (None, None) => None,
+                };
+                TyKind::Macro(Macro {
+                    attrs,
+                    doc,
+                    has_common_attrs,
+                })
             }
 
             (None, "use_extension") => {
@@ -1150,6 +1183,39 @@ fn attrs_from_dict_literal(db: &dyn Db, lit: &DictLiteral, allow_none: bool) -> 
             })
             .collect::<Vec<_>>(),
         expr: lit.expr,
+    }
+}
+
+fn attrs_from_dict_literal_and_parent(
+    db: &dyn Db,
+    lit: &DictLiteral,
+    parent: &RuleAttributes,
+    allow_none: bool,
+) -> RuleAttributes {
+    let overrides = attrs_from_dict_literal(db, lit, allow_none);
+    let mut attr_map: FxHashMap<_, _> = parent.attrs.iter().cloned().collect();
+
+    for (name, val) in overrides.attrs {
+        match val {
+            None => {
+                // note: keeping attribute in `attr_map` but w/none as value so
+                // that type checking can yield a specific diagnostic (removed
+                // attribute)
+                let removed_attr = attr_map.insert(name, None);
+                if removed_attr.is_none() {
+                    /* uh-oh, tried to remove an attr that's not in the base.. */
+                    // TODO: diagnostic?
+                }
+            }
+            Some(_) => {
+                attr_map.insert(name, val);
+            }
+        }
+    }
+
+    RuleAttributes {
+        attrs: attr_map.into_iter().collect(),
+        expr: overrides.expr,
     }
 }
 
