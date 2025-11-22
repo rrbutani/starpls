@@ -328,8 +328,9 @@ impl BuiltinFunction {
                 }
             }
 
-            (None, name @ ("rule" | "repository_rule")) => {
-                let mut attrs = None;
+            (None, fn_name @ ("rule" | "repository_rule")) => {
+                let mut parent = None::<&TyRule>;
+                let mut attrs_lit = None;
                 let mut doc = None;
                 for (arg, ty) in args {
                     if let Argument::Keyword { name, .. } = arg {
@@ -341,7 +342,14 @@ impl BuiltinFunction {
                             }
                             "attrs" => {
                                 if let TyKind::Dict(_, _, Some(lit)) = ty.kind() {
-                                    attrs = Some(attrs_from_dict_literal(db, lit, false))
+                                    attrs_lit = Some(&**lit);
+                                }
+                            }
+                            // `rule`s can extend a parent:
+                            //   - https://docs.google.com/document/d/1p6z-shWf9sdqo_ep7dcjZCGvqN5r2jsPkJCqHHgfRp4/edit?tab=t.0#heading=h.ukm56r1dl2dp
+                            "parent" if fn_name == "rule" => {
+                                if let TyKind::Rule(parent_rule) = ty.kind() {
+                                    parent = Some(parent_rule);
                                 }
                             }
                             _ => {}
@@ -349,14 +357,32 @@ impl BuiltinFunction {
                     }
                 }
 
+                let doc = match (doc, parent) {
+                    (None, Some(TyRule { doc, .. })) => doc.clone(),
+                    (Some(doc_string), _) => Some(doc_string.value(db).clone()),
+                    (None, None) => None,
+                };
+
+                // re: attribute merging/overriding
+                //   - idt you can unset (i.e. `None`) parent attrs?
+                //   - doc merging behavior? not sure
+                let attrs = match (attrs_lit, parent.and_then(|r| r.attrs.as_ref())) {
+                    (Some(lit), None) => Some(Arc::new(attrs_from_dict_literal(db, lit, false))),
+                    (None, Some(parent)) => Some(parent.clone()),
+                    (Some(lit), Some(parent)) => Some(Arc::new(
+                        attrs_from_dict_literal_and_parent(db, lit, &parent, false),
+                    )),
+                    (None, None) => None,
+                };
+
                 TyKind::Rule(TyRule {
-                    kind: if name == "rule" {
+                    kind: if fn_name == "rule" {
                         RuleKind::Build
                     } else {
                         RuleKind::Repository
                     },
-                    doc: doc.map(|doc| doc.value(db).clone()),
-                    attrs: attrs.map(Arc::new),
+                    doc,
+                    attrs,
                 })
             }
 
