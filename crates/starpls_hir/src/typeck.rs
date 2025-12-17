@@ -1632,6 +1632,7 @@ pub(crate) struct TagClassData {
 pub(crate) struct ModuleExtension {
     pub(crate) doc: Option<Box<str>>,
     pub(crate) tag_classes: Option<Box<[TagClassData]>>,
+    pub(crate) tag_classes_expr: Option<InFile<ExprId>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

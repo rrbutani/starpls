@@ -463,6 +463,7 @@ impl BuiltinFunction {
             (None, "module_extension") => {
                 let mut doc = None;
                 let mut tag_classes = None;
+                let mut tag_classes_expr = None;
                 for (arg, ty) in args {
                     if let Argument::Keyword { name, .. } = arg {
                         match name.as_str() {
@@ -477,6 +478,7 @@ impl BuiltinFunction {
                                     _ => continue,
                                 };
 
+                                tag_classes_expr = lit.expr;
                                 tag_classes = Some(
                                     lit.known_keys
                                         .iter()
@@ -496,7 +498,11 @@ impl BuiltinFunction {
                     }
                 }
 
-                TyKind::ModuleExtension(Arc::new(ModuleExtension { doc, tag_classes }))
+                TyKind::ModuleExtension(Arc::new(ModuleExtension {
+                    doc,
+                    tag_classes,
+                    tag_classes_expr,
+                }))
             }
 
             (None, "macro") => {
