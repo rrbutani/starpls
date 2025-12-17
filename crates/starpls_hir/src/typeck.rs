@@ -1565,6 +1565,7 @@ pub(crate) struct AttributeData {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct TagClass {
     pub(crate) attrs: Option<Box<[AttributeData]>>,
+    pub(crate) attrs_expr: Option<InFile<ExprId>>,
     pub(crate) doc: Option<InternedString>,
 }
 
