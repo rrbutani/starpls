@@ -463,16 +463,16 @@ impl FileLoader for DefaultFileLoader {
                 }
 
                 let repo_kind = label.kind();
-                let (resolved_path, canonical_repo) = match self
-                    .read_cache_result(&repo_kind, path, from)
-                {
-                    Some(path) => (path, None),
-                    None => {
-                        let res = try_opt!(self.resolve_label(&label, from)?);
-                        self.record_cache_result(&repo_kind, path, from, res.resolved_path.clone());
-                        (res.resolved_path, res.canonical_repo)
-                    }
-                };
+                let (resolved_path, canonical_repo) =
+                    match self.read_cache_result(&repo_kind, path, from) {
+                        Some(path) => (path, None),
+                        None => {
+                            let res = try_opt!(self.resolve_label(&label, from)?);
+                            let resolved_path = res.resolved_path.join(label.target());
+                            self.record_cache_result(&repo_kind, path, from, resolved_path.clone());
+                            (resolved_path, res.canonical_repo)
+                        }
+                    };
 
                 let is_external = !resolved_path.starts_with(&self.workspace);
                 (
